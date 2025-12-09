@@ -38,6 +38,8 @@ const int randomPin = A5;
 const byte matrixDinPin = 12;
 const byte matrixClkPin = 11;
 const byte matrixCsPin = 10;
+const int echoPin = A2;
+const int trigPin = A3;
 
 const byte matrixDevices = 1;
 const byte ledMatrixSize = 8;
@@ -72,6 +74,13 @@ const int drawClearHoldTime = 1200;
 const int drawExitHoldTime = 2500;
 const int fastBlinkInterval = 150;
 const int slowBlinkInterval = 450;
+const int ultrasonicDisplayUpdateInterval = 500;
+const int ultrasonicBaselineSampleTime = 3000;
+const int ultrasonicReadyMessageDuration = 1000;
+const int roguelikeMovementDelay = 200;
+const int roguelikeTimerUpdateInterval = 1000;
+const unsigned long echoTimeout = 20000;
+const float microsecondsPerCm = 58.0;
 
 const int probCoinAir = 10;
 const int probCoinGround = 20;
@@ -83,12 +92,22 @@ const int randomResolution = 100;
 const int joystickThresholdLow = 200;
 const int joystickThresholdHigh = 800;
 
+const int roguelikeWorldSize = 24;
+const int roguelikeViewportSize = 8;
+const int roguelikeInitialHealth = 10;
+const int roguelikeInitialAmmo = 30;
+const byte roguelikeTileEmpty = 0;
+const byte roguelikeTileWall = 1;
+const byte roguelikeTilePlayer = 2;
+
 // Menu Options
 const int menuOptionStart = 0;
 const int menuOptionDraw = 1;
-const int menuOptionScores = 2;
-const int menuOptionAbout = 3;
-const int menuMaxIndex = 3;
+const int menuOptionRoguelike = 2;
+const int menuOptionUltrasonic = 3;
+const int menuOptionScores = 4;
+const int menuOptionAbout = 5;
+const int menuMaxIndex = 5;
 
 // Page Counts & Indices
 const int totalScorePages = 2;
@@ -118,6 +137,8 @@ const byte charPlayer = 0;
 const byte charFire = 1;
 const byte charCup = 2;
 const byte charStalactite = 3;
+const byte charHeart = 4;
+const byte charBullet = 5;
 const byte charEmpty = 32;
 
 // bitmaps
@@ -165,6 +186,28 @@ byte bmpStalactite[8] = {
   B00000
 };
 
+byte bmpHeart[8] = {
+  B00000,
+  B01010,
+  B11111,
+  B11111,
+  B01110,
+  B00100,
+  B00000,
+  B00000
+};
+
+byte bmpBullet[8] = {
+  B00000,
+  B00100,
+  B01110,
+  B11111,
+  B11111,
+  B01110,
+  B00100,
+  B00000
+};
+
 // -- global variables --
 const int stateMenu = 0;
 const int statePlaying = 1;
@@ -174,6 +217,8 @@ const int stateFormatting = 4;
 const int stateAbout = 5; 
 const int stateResetMsg = 6; 
 const int stateDrawing = 7;
+const int stateUltrasonic = 8;
+const int stateRoguelike = 9;
 int gameState = stateMenu;
 const unsigned int initialScore = 0;
 const byte playerStartRow = 1;
@@ -214,14 +259,12 @@ const unsigned int cupScoreBonus = 10;
 LiquidCrystal lcd(rsPin, enPin, d4Pin, d5Pin, d6Pin, d7Pin);
 LedControl matrixController = LedControl(matrixDinPin, matrixClkPin, matrixCsPin, matrixDevices);
 
-enum PixelState : byte {
-  PixelOff = 0,
-  PixelSolid,
-  PixelBlinkFast,
-  PixelBlinkSlow
-};
+const byte pixelStateOff = 0;
+const byte pixelStateOn = 1;
+const byte pixelStateBlinkFast = 2;
+const byte pixelStateBlinkSlow = 3;
 
-PixelState pixelStateGrid[ledMatrixSize][ledMatrixSize];
+byte matrixPixelState[ledMatrixSize][ledMatrixSize];
 byte cursorRow = 0;
 byte cursorColumn = 0;
 unsigned long lastDrawMoveTime = 0;
@@ -236,6 +279,29 @@ unsigned long lastFastBlinkToggle = 0;
 unsigned long lastSlowBlinkToggle = 0;
 bool fastBlinkVisible = true;
 bool slowBlinkVisible = true;
+
+struct UltrasonicBaseline {
+  bool ready = false;
+  unsigned long startTime = 0;
+  float distanceSum = 0;
+  unsigned int samples = 0;
+  float averageDistance = 0;
+};
+UltrasonicBaseline ultrasonicBaseline;
+unsigned long lastUltrasonicDisplayUpdate = 0;
+unsigned long ultrasonicReadyMessageStartTime = 0;
+bool ultrasonicShowingReadyMessage = false;
+float currentUltrasonicDistance = 0;
+
+byte roguelikeWorld[roguelikeWorldSize][roguelikeWorldSize];
+int roguelikePlayerX = 12;
+int roguelikePlayerY = 20;
+int roguelikeHealth = roguelikeInitialHealth;
+int roguelikeAmmo = roguelikeInitialAmmo;
+unsigned long roguelikeGameStartTime = 0;
+unsigned long roguelikeLastMoveTime = 0;
+unsigned long roguelikeLastTimerUpdate = 0;
+int roguelikeElapsedSeconds = 0;
 
 // Function predeclarations 
 void playTone(int freq, int dur);
@@ -257,20 +323,31 @@ void clearMatrixBuffer();
 void renderMatrixFrame();
 void enterDrawingMode(unsigned long currentTime);
 void updateDrawingMode(unsigned long currentTime, int horizontalReading, int verticalReading, int buttonValue, bool buttonPressedEvent);
-PixelState nextPixelState(PixelState state);
-bool pixelShouldBeLit(PixelState state);
+float readUltrasonicDistance();
+void collectUltrasonicBaseline();
+void enterUltrasonicMode(unsigned long currentTime);
+void updateUltrasonicMode(unsigned long currentTime);
+void initRoguelikeWorld();
+void enterRoguelikeMode(unsigned long currentTime);
+void updateRoguelikeMode(unsigned long currentTime, int horizontalReading, int verticalReading);
+void renderRoguelikeViewport();
+void updateRoguelikeLCD(unsigned long currentTime);
 
 void setup() {
   Serial.begin(baudRate);
   pinMode(joystickButtonPin, INPUT_PULLUP);
   pinMode(buzzerPin, OUTPUT);
   pinMode(menuReturnButtonPin, INPUT_PULLUP);
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
   
   lcd.begin(lcdCols, lcdRows);
   lcd.createChar(charPlayer, bmpPlayer);
   lcd.createChar(charFire, bmpFire);
   lcd.createChar(charCup, bmpCup);
   lcd.createChar(charStalactite, bmpStalactite);
+  lcd.createChar(charHeart, bmpHeart);
+  lcd.createChar(charBullet, bmpBullet);
   initMatrix();
   
   randomSeed(analogRead(randomPin));
@@ -354,6 +431,8 @@ void loop() {
         playTone(NOTE_C6, toneMenuSelectDur);
         if (menuSelection == menuOptionStart) startGame(currentTime);
         else if (menuSelection == menuOptionDraw) changeState(stateDrawing, currentTime);
+        else if (menuSelection == menuOptionRoguelike) changeState(stateRoguelike, currentTime);
+        else if (menuSelection == menuOptionUltrasonic) changeState(stateUltrasonic, currentTime);
         else if (menuSelection == menuOptionScores) changeState(stateScores, currentTime);
         else if (menuSelection == menuOptionAbout) changeState(stateAbout, currentTime);
       }
@@ -443,6 +522,22 @@ void loop() {
       updateDrawingMode(currentTime, joystickHorizontalReading, joystickVerticalReading, joystickButtonValue, joystickButtonPressed);
       break;
 
+    case stateUltrasonic:
+      if (waitForRelease) {
+        if (joystickButtonValue == HIGH) waitForRelease = false;
+        break;
+      }
+      updateUltrasonicMode(currentTime);
+      break;
+
+    case stateRoguelike:
+      if (waitForRelease) {
+        if (joystickButtonValue == HIGH) waitForRelease = false;
+        break;
+      }
+      updateRoguelikeMode(currentTime, joystickHorizontalReading, joystickVerticalReading);
+      break;
+
     // it's purpose is for the initial formating, when the resetCode is not the same
     case stateFormatting:
       if (currentTime - stateStart > formatHoldTime) {
@@ -463,7 +558,7 @@ void changeState(int newState, unsigned long currentTime) {
   matrixController.clearDisplay(0);
   }
 
-  if (newState == stateScores || newState == stateMenu || newState == stateAbout || newState == stateDrawing) {
+  if (newState == stateScores || newState == stateMenu || newState == stateAbout || newState == stateDrawing || newState == stateUltrasonic || newState == stateRoguelike) {
     waitForRelease = true;
   } else {
     waitForRelease = false;
@@ -471,6 +566,14 @@ void changeState(int newState, unsigned long currentTime) {
 
   if (newState == stateDrawing) {
     enterDrawingMode(currentTime);
+  }
+  
+  if (newState == stateUltrasonic) {
+    enterUltrasonicMode(currentTime);
+  }
+  
+  if (newState == stateRoguelike) {
+    enterRoguelikeMode(currentTime);
   }}
 
 void startGame(unsigned long now) {
@@ -564,6 +667,8 @@ void drawMenu() {
   
   if (menuSelection == menuOptionStart) lcd.print("> START         ");
   else if (menuSelection == menuOptionDraw) lcd.print("> DRAW MATRIX   ");
+  else if (menuSelection == menuOptionRoguelike) lcd.print("> ROGUELIKE     ");
+  else if (menuSelection == menuOptionUltrasonic) lcd.print("> ULTRASONIC    ");
   else if (menuSelection == menuOptionScores) lcd.print("> SCORES        ");
   else if (menuSelection == menuOptionAbout) lcd.print("> ABOUT CREATOR ");
   
@@ -579,7 +684,7 @@ void initMatrix() {
 void clearMatrixBuffer() {
   for (byte row = 0; row < ledMatrixSize; row++) {
     for (byte col = 0; col < ledMatrixSize; col++) {
-      pixelStateGrid[row][col] = PixelOff;
+      matrixPixelState[row][col] = pixelStateOff;
     }
   }
   matrixController.clearDisplay(0);
@@ -589,11 +694,16 @@ void clearMatrixBuffer() {
 void renderMatrixFrame() {
   for (byte row = 0; row < ledMatrixSize; row++) {
     for (byte col = 0; col < ledMatrixSize; col++) {
-      bool pixelLit = pixelShouldBeLit(pixelStateGrid[row][col]);
+      bool pixelOn = false;
+      byte state = matrixPixelState[row][col];
+      if (state == pixelStateOn) pixelOn = true;
+      else if (state == pixelStateBlinkFast) pixelOn = fastBlinkVisible;
+      else if (state == pixelStateBlinkSlow) pixelOn = slowBlinkVisible;
+
       if (row == cursorRow && col == cursorColumn && cursorBlinkOn) {
-        pixelLit = true;
+        pixelOn = true;
       }
-      matrixController.setLed(0, row, col, pixelLit);
+      matrixController.setLed(0, row, col, pixelOn);
     }
   }
 }
@@ -632,13 +742,15 @@ void updateDrawingMode(unsigned long currentTime, int horizontalReading, int ver
 
   if ((rowStep != 0 || columnStep != 0) && (currentTime - lastDrawMoveTime > drawMoveDelay)) {
     cursorRow = constrain(cursorRow + rowStep, 0, ledMatrixSize - 1);
-    cursorColumn = constrain(cursorColumn + columnStep, 0, ledMatrixSize - 1);
+   cursorColumn = constrain(cursorColumn + columnStep, 0, ledMatrixSize - 1);
     lastDrawMoveTime = currentTime;
     matrixNeedsRefresh = true;
   }
 
   if (buttonPressedEvent && !drawExitTriggered) {
-    pixelStateGrid[cursorRow][cursorColumn] = nextPixelState(pixelStateGrid[cursorRow][cursorColumn]);
+    byte currentState = matrixPixelState[cursorRow][cursorColumn];
+    currentState = (currentState + 1) % 4;
+    matrixPixelState[cursorRow][cursorColumn] = currentState;
     matrixNeedsRefresh = true;
     playTone(NOTE_G4, toneMenuMoveDur);
   }
@@ -691,31 +803,6 @@ void updateDrawingMode(unsigned long currentTime, int horizontalReading, int ver
   }
 }
 
-PixelState nextPixelState(PixelState state) {
-  switch (state) {
-    case PixelOff: return PixelSolid;
-    case PixelSolid: return PixelBlinkFast;
-    case PixelBlinkFast: return PixelBlinkSlow;
-    case PixelBlinkSlow:
-    default:
-      return PixelOff;
-  }
-}
-
-bool pixelShouldBeLit(PixelState state) {
-  switch (state) {
-    case PixelSolid:
-      return true;
-    case PixelBlinkFast:
-      return fastBlinkVisible;
-    case PixelBlinkSlow:
-      return slowBlinkVisible;
-    case PixelOff:
-    default:
-      return false;
-  }
-}
-
 void drawGame() {
   for(int r = 0; r < lcdRows; r++) {
     lcd.setCursor(0, r);
@@ -727,17 +814,11 @@ void drawGame() {
       }
     }
   }
-  lcd.setCursor(scoreCol, 0);
-  lcd.print(gameScore);
-}
+  lcd.setCursor(scoreCol, 0); lcd.print(gameScore);}
 
 void drawGameOver() {
-  lcd.setCursor(0, 0);
-  lcd.print("GAME OVER!      ");
-  lcd.setCursor(0, 1);
-  lcd.print("Score: ");
-  lcd.print(gameScore);
-}
+  lcd.setCursor(0, 0); lcd.print("GAME OVER!      ");
+  lcd.setCursor(0, 1); lcd.print("Score: "); lcd.print(gameScore);}
 
 void showScores(unsigned long now) {
   int page = (now / scorePageTime) % totalScorePages;
@@ -785,14 +866,9 @@ void printScore(int addr, int rank) {
   EEPROM.get(addr, name);
   EEPROM.get(addr + nameLen, score);
   
-  if (name[0] < asciiMin || name[0] > asciiMax) {
-    lcd.print("???");
-  } else {
-    lcd.print(name);
-  }
-  lcd.print(" ");
-  lcd.print(score);
-}
+  if (name[0] < asciiMin || name[0] > asciiMax) lcd.print("???");
+  else lcd.print(name);
+  lcd.print(" "); lcd.print(score);}
 
 void playTone(int frequency, int duration) {
   tone(buzzerPin, frequency);
@@ -839,3 +915,240 @@ void saveScore(int newScore) {
     EEPROM.put(addr, name);
     EEPROM.put(addr + nameLen, scores[i]);
   }}
+
+float readUltrasonicDistance() {
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+
+  unsigned long duration = pulseIn(echoPin, HIGH, echoTimeout);
+  if (duration == 0) return -1;
+
+  return duration / microsecondsPerCm;
+}
+
+void collectUltrasonicBaseline() {
+  unsigned long now = millis();
+  if (now - ultrasonicBaseline.startTime <= ultrasonicBaselineSampleTime) {
+    float distance = readUltrasonicDistance();
+    if (distance > 0 && distance < 400) {
+      ultrasonicBaseline.distanceSum += distance;
+      ultrasonicBaseline.samples++;
+    }
+  } else if (!ultrasonicBaseline.ready && ultrasonicBaseline.samples > 0) {
+    ultrasonicBaseline.averageDistance = ultrasonicBaseline.distanceSum / ultrasonicBaseline.samples;
+    ultrasonicBaseline.ready = true;
+    ultrasonicShowingReadyMessage = true;
+    ultrasonicReadyMessageStartTime = now;
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Baseline: ");
+    lcd.print(ultrasonicBaseline.averageDistance, 1);
+    lcd.print(" cm");
+    lcd.setCursor(0, 1);
+    lcd.print("System ready!");
+  }
+}
+
+void enterUltrasonicMode(unsigned long currentTime) {
+  ultrasonicBaseline.ready = false;
+  ultrasonicBaseline.startTime = currentTime;
+  ultrasonicBaseline.distanceSum = 0;
+  ultrasonicBaseline.samples = 0;
+  ultrasonicBaseline.averageDistance = 0;
+  lastUltrasonicDisplayUpdate = currentTime;
+  currentUltrasonicDistance = 0;
+  gameChanged = true;
+  
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Calibrating...");
+}
+
+void updateUltrasonicMode(unsigned long currentTime) {
+  if (!ultrasonicBaseline.ready) {
+    collectUltrasonicBaseline();
+    return;
+  }
+  
+  if (ultrasonicShowingReadyMessage) {
+    if (currentTime - ultrasonicReadyMessageStartTime >= ultrasonicReadyMessageDuration) {
+      ultrasonicShowingReadyMessage = false;
+      gameChanged = true;
+    }
+    return;
+  }
+
+  if (currentTime - lastUltrasonicDisplayUpdate >= ultrasonicDisplayUpdateInterval) {
+    lastUltrasonicDisplayUpdate = currentTime;
+    currentUltrasonicDistance = readUltrasonicDistance();
+    
+    if (gameChanged) {
+      lcd.clear();
+      gameChanged = false;
+    }
+    
+    lcd.setCursor(0, 0);
+    lcd.print("Distance: ");
+    if (currentUltrasonicDistance > 0 && currentUltrasonicDistance < 400) {
+      lcd.print(currentUltrasonicDistance, 1);
+      lcd.print(" cm  ");
+    } else {
+      lcd.print("Out range");
+    }
+    
+    lcd.setCursor(0, 1);
+    lcd.print("Base: ");
+    lcd.print(ultrasonicBaseline.averageDistance, 1);
+    lcd.print(" cm  ");
+  }
+}
+
+void initRoguelikeWorld() {
+  // Clear world
+  for (int y = 0; y < roguelikeWorldSize; y++) {
+    for (int x = 0; x < roguelikeWorldSize; x++) {
+      roguelikeWorld[y][x] = roguelikeTileEmpty;
+    }
+  }
+  
+  // Add border walls
+  for (int i = 0; i < roguelikeWorldSize; i++) {
+    roguelikeWorld[0][i] = roguelikeTileWall;
+    roguelikeWorld[roguelikeWorldSize - 1][i] = roguelikeTileWall;
+    roguelikeWorld[i][0] = roguelikeTileWall;
+    roguelikeWorld[i][roguelikeWorldSize - 1] = roguelikeTileWall;
+  }
+  
+  // Add some interior walls for interest
+  for (int i = 5; i < 10; i++) {
+    roguelikeWorld[5][i] = roguelikeTileWall;
+    roguelikeWorld[18][i] = roguelikeTileWall;
+  }
+  for (int i = 15; i < 20; i++) {
+    roguelikeWorld[i][12] = roguelikeTileWall;
+  }
+}
+
+void enterRoguelikeMode(unsigned long currentTime) {
+  initRoguelikeWorld();
+  roguelikePlayerX = 12;
+  roguelikePlayerY = 20;
+  roguelikeHealth = roguelikeInitialHealth;
+  roguelikeAmmo = roguelikeInitialAmmo;
+  roguelikeGameStartTime = currentTime;
+  roguelikeLastMoveTime = currentTime;
+  roguelikeLastTimerUpdate = currentTime;
+  roguelikeElapsedSeconds = 0;
+  gameChanged = true;
+}
+
+void renderRoguelikeViewport() {
+  // Calculate camera position (center on player)
+  int cameraX = roguelikePlayerX - (roguelikeViewportSize / 2);
+  int cameraY = roguelikePlayerY - (roguelikeViewportSize / 2);
+  
+  // Clamp camera to world bounds
+  if (cameraX < 0) cameraX = 0;
+  if (cameraY < 0) cameraY = 0;
+  if (cameraX > roguelikeWorldSize - roguelikeViewportSize) {
+    cameraX = roguelikeWorldSize - roguelikeViewportSize;
+  }
+  if (cameraY > roguelikeWorldSize - roguelikeViewportSize) {
+    cameraY = roguelikeWorldSize - roguelikeViewportSize;
+  }
+  
+  // Render 8x8 viewport to matrix
+  for (int viewY = 0; viewY < roguelikeViewportSize; viewY++) {
+    for (int viewX = 0; viewX < roguelikeViewportSize; viewX++) {
+      int worldX = cameraX + viewX;
+      int worldY = cameraY + viewY;
+      
+      bool ledOn = false;
+      
+      // Check if player is at this position
+      if (worldX == roguelikePlayerX && worldY == roguelikePlayerY) {
+        ledOn = true;
+      }
+      // Check world tile
+      else if (roguelikeWorld[worldY][worldX] == roguelikeTileWall) {
+        ledOn = true;
+      }
+      
+      matrixController.setLed(0, viewY, viewX, ledOn);
+    }
+  }
+}
+
+void updateRoguelikeLCD(unsigned long currentTime) {
+  // Update timer
+  if (currentTime - roguelikeLastTimerUpdate >= roguelikeTimerUpdateInterval) {
+    roguelikeLastTimerUpdate = currentTime;
+    roguelikeElapsedSeconds = (currentTime - roguelikeGameStartTime) / 1000;
+  }
+  
+  // Row 0: Heart icon + health, spaces, timer
+  lcd.setCursor(0, 0);
+  lcd.write((byte)charHeart);
+  if (roguelikeHealth < 10) lcd.print(" ");
+  lcd.print(roguelikeHealth);
+  
+  lcd.print("      ");
+  
+  int minutes = roguelikeElapsedSeconds / 60;
+  int seconds = roguelikeElapsedSeconds % 60;
+  if (minutes < 10) lcd.print("0");
+  lcd.print(minutes);
+  lcd.print(":");
+  if (seconds < 10) lcd.print("0");
+  lcd.print(seconds);
+  
+  // Row 1: Bullet icon + ammo
+  lcd.setCursor(0, 1);
+  lcd.write((byte)charBullet);
+  if (roguelikeAmmo < 10) lcd.print(" ");
+  lcd.print(roguelikeAmmo);
+  lcd.print("            ");
+}
+
+void updateRoguelikeMode(unsigned long currentTime, int horizontalReading, int verticalReading) {
+  // Handle movement
+  if (currentTime - roguelikeLastMoveTime >= roguelikeMovementDelay) {
+    int newX = roguelikePlayerX;
+    int newY = roguelikePlayerY;
+    bool moved = false;
+    
+    if (horizontalReading < joystickThresholdLow) {
+      newX--;
+      moved = true;
+    } else if (horizontalReading > joystickThresholdHigh) {
+      newX++;
+      moved = true;
+    }
+    
+    if (verticalReading < joystickThresholdLow) {
+      newY--;
+      moved = true;
+    } else if (verticalReading > joystickThresholdHigh) {
+      newY++;
+      moved = true;
+    }
+    
+    // Check boundaries and collisions
+    if (moved) {
+      if (newX >= 0 && newX < roguelikeWorldSize && 
+          newY >= 0 && newY < roguelikeWorldSize &&
+          roguelikeWorld[newY][newX] != roguelikeTileWall) {
+        roguelikePlayerX = newX;
+        roguelikePlayerY = newY;
+        roguelikeLastMoveTime = currentTime;
+        renderRoguelikeViewport();
+      }
+    }
+  }
+  
+  // Update LCD display
+  updateRoguelikeLCD(currentTime);
+}
