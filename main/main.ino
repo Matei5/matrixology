@@ -284,6 +284,12 @@ unsigned long lastFastBlinkToggle = 0;
 unsigned long lastSlowBlinkToggle = 0;
 bool fastBlinkVisible = true;
 bool slowBlinkVisible = true;
+byte lastHeartStage;
+int tutorialPage = 0;
+unsigned long lastTutorialScroll = 0;
+int lastMenuSelection = -1;
+int lastDisplayedScorePage = -1;
+int lastDisplayedAboutPage = -1;
 
 // light sensor
 int currentLightLevel = 0;
@@ -442,9 +448,8 @@ void loop() {
           playTone(NOTE_E5, introNoteDuration);
           introSoundStep = 2;
         }
-
         // heartbeat animation (3 frames: small, medium, big)
-        static byte lastHeartStage = invalidStage;
+        lastHeartStage = invalidStage;
         byte heartStage = (currentTime / heartbeatInterval) % heartbeatStages;
 
         if (lastHeartStage != heartStage) {
@@ -463,8 +468,8 @@ void loop() {
 
     case stateHowToPlay:
       {
-        static int tutorialPage = 0;
-        static unsigned long lastTutorialScroll = 0;
+        tutorialPage = 0;
+        lastTutorialScroll = 0;
 
         if (gameChanged) {
           tutorialPage = 0;
@@ -826,7 +831,7 @@ void changeState(GameState newState, unsigned long currentTime) {
 }
 
 void drawMenu() {
-  static int lastMenuSelection = -1;
+  lastMenuSelection = -1;
 
   bool needsRedraw = gameChanged || (lastMenuSelection != menuSelection);
 
@@ -1085,7 +1090,7 @@ void updateDrawingMode(unsigned long currentTime, int horizontalReading, int ver
 
 void showScores(unsigned long currentTime) {
   int scorePage = (currentTime / scorePageTime) % totalScorePages;
-  static int lastDisplayedScorePage = -1;
+  lastDisplayedScorePage = -1;
 
   if (scorePage != lastDisplayedScorePage) {
     lcd.clear();
@@ -1110,7 +1115,7 @@ void showScores(unsigned long currentTime) {
 
 void showAbout(unsigned long currentTime) {
   int aboutPage = (currentTime / aboutPageTime) % totalAboutPages;
-  static int lastDisplayedAboutPage = -1;
+  lastDisplayedAboutPage = -1;
 
   if (aboutPage != lastDisplayedAboutPage) {
     lcd.clear();
@@ -1235,7 +1240,7 @@ void initRoguelikeWorld() {
       roguelikeWorld[worldY][worldX] = roguelikeTileEmpty;
     }
   }
-  
+
   // border walls
   for (int borderIndex = 0; borderIndex < roguelikeWorldSize; borderIndex++) {
     roguelikeWorld[0][borderIndex] = roguelikeTileWall;
@@ -1439,7 +1444,7 @@ void updateRoguelikeMode(unsigned long currentTime, int horizontalReading, int v
     roguelikeLastEnemySpawn = currentTime;
   }
 
-  // level up  
+  // level up
   if (roguelikeScore >= roguelikeLevel * scorePerLevel && levelUpStep == 0) {
     roguelikeLevel++;
     levelUpStep = 1;
@@ -1467,9 +1472,9 @@ void spawnEnemy() {
     if (enemies[enemyIndex].active) activeEnemyCount++;
   }
   if (activeEnemyCount >= currentMaxEnemies) {
-    return; 
+    return;
   }
-  
+
   for (byte enemyIndex = 0; enemyIndex < maxEnemies; enemyIndex++) {
     if (!enemies[enemyIndex].active) {
       // spawn away from player
