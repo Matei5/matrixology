@@ -41,6 +41,9 @@ const int photoResistorPin = A2;
 // matrix constants
 const byte ledMatrixSize = 8;
 const byte matrixDefaultIntensity = 5;
+const int minMatrixBrightness = 0;
+const int maxMatrixBrightness = 15;
+const int defaultMatrixBrightness = 5;
 
 // game constants
 const int lcdCols = 16;
@@ -65,8 +68,7 @@ const int lightSensorDisplayInterval = 200;
 const int roguelikeMovementDelay = 200;
 const int roguelikeAutoShootDelay = 300;
 const int howToPlayScrollDelay = 3000;
-const unsigned long abilityCooldown = 20000;
-int darkThreshold = 400;
+const unsigned long abilityCooldown = 10000;
 const int oneSecondMs = 1000;
 const int numDirections = 8;
 const int introHeartCol = 7;
@@ -191,6 +193,7 @@ const int toneResetDur = 150;
 // eeprom
 const int eepromStartAddress = 10;
 const int eepromThresholdAddress = 30;
+const int eepromMatrixBrightnessAddress = 50;
 const int eepromResetCode = 148;
 const int eepromResetCodeAddress = 0;
 const int highScoreCount = 4;
@@ -252,6 +255,8 @@ unsigned long toneEnd = 0;
 unsigned long stateStart = 0;
 unsigned long buttonPressStartTime = 0;
 unsigned long roguelikeButtonHoldStart = 0;
+int darkThreshold = 400;
+int matrixBrightness = 5;
 
 bool waitForRelease = false;
 
@@ -383,6 +388,8 @@ void setup() {
   } else {
     EEPROM.get(eepromThresholdAddress, darkThreshold);
     if (darkThreshold < minDarkThreshold || darkThreshold > maxDarkThreshold) darkThreshold = defaultDarkThreshold;
+    EEPROM.get(eepromMatrixBrightnessAddress, matrixBrightness);
+    if (matrixBrightness < minMatrixBrightness || matrixBrightness > maxMatrixBrightness) matrixBrightness = defaultMatrixBrightness;
     gameState = stateIntro;
     stateStart = millis();
   }
@@ -745,11 +752,14 @@ void loop() {
         gameOverStep = 0;
         gameOverStepTime = currentTime;
         gameChanged = false;
+        int currentHighScore;
+        EEPROM.get(eepromStartAddress, currentHighScore);
 
         lcd.clear();
         if (gameOverIsHighScore) {
           lcd.setCursor(0, 0);
-          lcd.print(F("NEW HIGHSCORE!"));
+          if(currentHighScore < roguelikeScore) lcd.print(F("NEW HIGHSCORE!"));
+          else lcd.print(F("NICE SCORE!"));
         } else {
           lcd.setCursor(0, 0);
           lcd.print(F("GAME OVER!"));
@@ -841,7 +851,7 @@ void drawMenu() {
 
   matrixController.clearDisplay(matrixDeviceIndex);
 
-  if (menuSelection == menuOptionStart) {
+  if (menuSelection == menuOptionStart) { // row, col
     matrixController.setLed(matrixDeviceIndex, 5, 1, true);
     matrixController.setLed(matrixDeviceIndex, 5, 2, true);
     matrixController.setLed(matrixDeviceIndex, 4, 2, true);
