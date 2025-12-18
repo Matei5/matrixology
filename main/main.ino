@@ -500,6 +500,8 @@ void loop() {
           case 3:
             lcd.setCursor(0, 0);
             lcd.print(F("Kill enemies!   "));
+            lcd.setCursor(0, 1);
+            lcd.print(F("                "));
             break;
         }
 
