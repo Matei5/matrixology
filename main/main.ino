@@ -404,7 +404,7 @@ void loop() {
   }
   lastMenuReturnButtonState = menuReturnButtonValue;
 
-  if (menuReturnButtonPressed && gameState != stateMenu && gameState != stateRoguelike) {
+  if (menuReturnButtonPressed && gameState != stateMenu) {
     playTone(NOTE_C5, toneMenuSelectDur);
     changeState(stateMenu, currentTime);
     return;
