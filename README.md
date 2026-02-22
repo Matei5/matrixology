@@ -34,55 +34,6 @@ A roguelike shooter where you navigate a 24x24 dungeon viewed through an 8x8 vie
 6. **Light Test** — Calibrate/test the photoresistor
 7. **Draw Mode** — Free drawing on the matrix (extra feature)
 
-
-## 📋 Task Requirements
-
-### Menu (2p)
-- ✅ Intro message with animation on startup
-- ✅ Start Game option
-- ✅ Shown details while playing (Lives, Score, Level, Ability cooldown)
-- ✅ Screen upon game ending with score display
-- ✅ Informs player when highscore is achieved
-- ✅ Highscore: top 4 saved in EEPROM with score
-- ⚠️ Highscore names not implemented (scores only)
-- ⚠️ Enter name not implemented
-- ✅ Settings: Matrix brightness control (saved to EEPROM)
-- ⚠️ Settings: LCD brightness control not implemented
-- ⚠️ Settings: Sound on/off not implemented
-- ✅ Settings: Reset high scores button
-- ✅ About: GitHub link, developer name, game name
-- ✅ How to play: short description
-- ✅ Different matrix icon for each menu category
-- ✅ Sound when changing menu selection
-
-### Game (3p)
-- ✅ Uses LCD, Joystick, Buzzer, Sensor, LED Matrix
-- ✅ Sound effects (movement, shooting, damage, level up, menu)
-- ✅ 24x24 logical world with 8x8 viewport (fog of war)
-- ✅ Progressive difficulty (more enemies per level)
-- ✅ Sensor integration (photoresistor triggers burst attack)
-- ✅ Reasonable game length
-- ✅ Intuitive and fun gameplay
-
-### Documentation (1.5p)
-- ✅ Introduction / backstory
-- ✅ Game description
-- ✅ How to play instructions
-- ✅ Used components
-- ✅ Picture of setup
-- ✅ Video demonstration
-
-### Code (2p)
-- ✅ Named constants (no magic numbers)
-- ✅ Correct spacing and formatting
-- ✅ Descriptive variable and function names
-- ✅ State machine architecture
-
-### Feeling (1.5p)
-- ✅ Complete product feel
-- ✅ Intuitive controls
-- ✅ Fun gameplay loop
-
 ## 🖼️ Picture of the Setup
 
 ![Hardware Setup](setup.jpg)
@@ -100,4 +51,5 @@ A roguelike shooter where you navigate a 24x24 dungeon viewed through an 8x8 vie
 - Photoresistor
 - Passive Buzzer
 - Push Button
+
 - Resistors, breadboards, jumper wires
